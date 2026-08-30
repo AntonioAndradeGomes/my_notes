@@ -1,0 +1,102 @@
+// Schema do MyNotes.
+// O modelo completo (cadernos, tags, anexos, versões, compartilhamento) está
+// especificado em docs/architecture/data-model.md e entra ao longo da Fase 1.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/infra/prisma/generated"
+
+  // Necessário para declarar extensões do Postgres no datasource. Sem isso, as
+  // extensões teriam de ser criadas fora das migrations — e a CI, que sobe um
+  // Postgres cru sem o docker/postgres/init, quebraria.
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [citext, pg_trgm, unaccent]
+}
+
+model User {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// citext: Joao@Exemplo.com e joao@exemplo.com sao a mesma pessoa.
+  /// Resolver no tipo da coluna faz o indice unico valer de fato.
+  email String @unique @db.Citext
+
+  /// Nome completo.
+  name String @db.VarChar(120)
+
+  /// Argon2id. A senha em claro nunca e persistida nem registrada em log.
+  passwordHash String @map("password_hash")
+
+  /// Exclusao de conta e agendada, nao imediata: o usuario tem 30 dias para
+  /// cancelar por e-mail antes do expurgo definitivo.
+  deletionScheduledAt DateTime? @map("deletion_scheduled_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  notes    Note[]
+  sessions Session[]
+
+  @@index([deletionScheduledAt])
+  @@map("users")
+}
+
+/// Uma sessao por refresh token ativo. E o que torna a revogacao real:
+/// derrubar uma sessao invalida o token de fato, em vez de esperar expirar.
+model Session {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// SHA-256 do refresh token. O valor em claro nunca e persistido: um dump do
+  /// banco nao da acesso a nada.
+  refreshTokenHash String @unique @map("refresh_token_hash")
+
+  deviceName String? @map("device_name") @db.VarChar(100)
+  ipAddress  String? @map("ip_address") @db.Inet
+
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  /// Preenchido na rotacao e na revogacao. A linha e mantida de proposito:
+  /// e ela que permite detectar reuso de um token ja consumido.
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Note {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  title          String @db.VarChar(255)
+  content        String @default("")
+  contentPreview String @default("") @map("content_preview") @db.VarChar(200)
+
+  isPinned   Boolean @default(false) @map("is_pinned")
+  isArchived Boolean @default(false) @map("is_archived")
+
+  /// Incrementa a cada escrita. Base do controle de concorrencia otimista
+  /// e da deteccao de conflito na sincronizacao.
+  version         BigInt    @default(1)
+  clientUpdatedAt DateTime? @map("client_updated_at") @db.Timestamptz(3)
+
+  /// Exclusao reversivel: a lixeira e requisito do produto. Um job expurga
+  /// definitivamente apos 30 dias.
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([deletedAt])
+  @@map("notes")
+}

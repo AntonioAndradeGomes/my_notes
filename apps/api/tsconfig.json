@@ -1,0 +1,15 @@
+{
+  "extends": "@mynotes/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "removeComments": true,
+    "types": ["vitest/globals", "node"],
+    "outDir": "./dist"
+  },
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "prisma.config.ts",
+    "vitest.config.ts",
+    "vitest.config.e2e.ts"
+  ]
+}
