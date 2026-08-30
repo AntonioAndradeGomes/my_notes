@@ -1,0 +1,29 @@
+name: Propor funcionalidade
+description: Sugerir algo novo ou uma melhoria
+labels: ["enhancement", "triagem"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qual problema isso resolve
+      description: Descreva a dor, não a solução.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impacto
+      options:
+        - label: Altera o contrato da API (exige atualizar o OpenAPI)
+        - label: Altera o modelo de dados (exige migration)
+        - label: Precisa de uma ADR

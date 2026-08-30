@@ -1,0 +1,43 @@
+name: Relatar bug
+description: Algo não funciona como deveria
+labels: ["bug", "triagem"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Onde acontece
+      options: [api, web, mobile, infra, docs, não sei]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: O que deveria acontecer
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: O que acontece
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ambiente
+      placeholder: "SO, navegador/dispositivo, versão do app, commit"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs relevantes
+      render: shell

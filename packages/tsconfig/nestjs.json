@@ -1,0 +1,25 @@
+// ATENÇÃO: presets compartilhados não declaram opções de caminho (outDir,
+// rootDir, baseUrl, paths). Em um tsconfig herdado, caminhos relativos são
+// resolvidos a partir do arquivo que os declara — ou seja, desta pasta.
+// Cada projeto declara os seus.
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "NestJS",
+  "extends": "./base.json",
+  "compilerOptions": {
+    // O NestJS 12 é ESM: "type": "module" no package.json e imports relativos
+    // com extensão .js explícita. O módulo NodeNext vem do base.json.
+    "resolvePackageJsonExports": true,
+    "allowSyntheticDefaultImports": true,
+
+    // A injeção de dependência do Nest lê os metadados de tipo que o compilador
+    // emite. verbatimModuleSyntax precisa ficar desligado: com ele, um tipo
+    // importado só como tipo não sobrevive à compilação e a DI perde a referência.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "verbatimModuleSyntax": false,
+
+    // Entidades e DTOs declaram propriedades que decorators preenchem.
+    "strictPropertyInitialization": false
+  }
+}

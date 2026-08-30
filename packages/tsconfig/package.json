@@ -1,0 +1,9 @@
+{
+  "name": "@mynotes/tsconfig",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Presets de TypeScript compartilhados pelo monorepo",
+  "files": [
+    "*.json"
+  ]
+}

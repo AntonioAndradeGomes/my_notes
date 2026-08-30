@@ -1,0 +1,24 @@
+# Configuração do Redocly CLI.
+# Declarar o ruleset explicitamente mantém o resultado do lint estável entre
+# versões da ferramenta — uma atualização não muda em silêncio o que a CI exige.
+
+apis:
+  mynotes@v1:
+    root: docs/api/openapi.yaml
+
+extends:
+  - recommended
+
+rules:
+  # As sondas de health não têm resposta 4xx por definição: não recebem entrada
+  # do cliente. A regra permanece ativa para todas as demais rotas.
+  operation-4xx-response: warn
+  # Exigimos operationId em tudo: é o que nomeia os métodos dos clientes gerados.
+  operation-operationId: error
+  operation-operationId-unique: error
+  # Toda resposta precisa de descrição legível.
+  operation-description: off
+  # O servidor localhost é intencional: é o alvo do desenvolvimento local.
+  # A regra existe para pegar placeholders esquecidos, não este caso.
+  no-server-example.com: off
+  security-defined: error

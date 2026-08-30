@@ -1,0 +1,32 @@
+packages:
+  - "apps/api"
+  - "apps/web"
+  - "packages/*"
+
+# Scripts de instalação permitidos (o pnpm 11 bloqueia todos por padrão).
+#   esbuild            → vincula o binário nativo usado pelo Vitest
+#   prisma / @prisma/engines → baixam e posicionam os query engines nativos
+#   core-js, protobufjs → postinstall é só telemetria/financiamento; ficam de fora
+# NOTA: o pnpm reescreve o bloco abaixo a cada install e remove comentários
+# internos — por isso a explicação vive aqui em cima.
+allowBuilds:
+  "@prisma/engines": true
+  argon2: true
+  core-js: false
+  esbuild: true
+  prisma: true
+  protobufjs: false
+
+# Catálogo central de versões: um único lugar para alinhar dependências
+# compartilhadas entre pacotes. Use "catalog:" no lugar da versão.
+catalog:
+  # TS fixado em 6.0.x: o @nestjs/cli 12 depende de ~6.0.2 e o typescript-eslint
+  # exige <6.1.0. O TS 7 já saiu, mas ainda quebra o typescript-eslint.
+  typescript: ~6.0.2
+  zod: ^4.5.0
+  eslint: ^10.0.0
+  prettier: ^3.9.0
+  vitest: ^4.1.0
+
+minimumReleaseAgeExclude:
+  - zod@4.5.0

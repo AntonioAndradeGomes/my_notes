@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "prisma.prisma",
+    "bradlc.vscode-tailwindcss",
+    "dart-code.flutter",
+    "redhat.vscode-yaml",
+    "42crunch.vscode-openapi",
+    "davidanson.vscode-markdownlint",
+    "bierner.markdown-mermaid",
+    "eamodio.gitlens"
+  ]
+}
