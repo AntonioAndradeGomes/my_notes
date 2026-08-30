@@ -1,0 +1,1701 @@
+openapi: 3.1.0
+
+info:
+  title: MyNotes API
+  version: 1.0.0
+  summary: API REST do MyNotes — notas, cadernos, tags e sincronização offline.
+  description: |
+    Contrato **canônico** da API do MyNotes. Este arquivo é a fonte da verdade:
+    é escrito e revisado antes da implementação (ver ADR-0007) e a partir dele
+    são gerados os tipos do `@mynotes/contracts`, o cliente Dart do app Flutter
+    e a documentação navegável.
+
+    ## Autenticação
+
+    Todas as rotas exigem `Authorization: Bearer <accessToken>`, exceto as marcadas
+    com `security: []`. O access token dura 15 minutos; renove com `POST /auth/refresh`.
+
+    ## Erros
+
+    Todo erro responde `application/problem+json` (RFC 9457). O campo `code` é
+    estável e é contra ele que os clientes devem programar — `title` e `detail`
+    são texto para humanos. Catálogo completo em `docs/api/errors.md`.
+
+    ## Paginação
+
+    Listagens usam paginação por cursor. Envie o `nextCursor` da resposta anterior
+    em `cursor`. Ausência de `nextCursor` significa fim da coleção.
+  contact:
+    name: Equipe MyNotes
+    url: https://github.com/gomesmax1997/mynotes
+  license:
+    name: MIT
+    identifier: MIT
+
+servers:
+  - url: http://localhost:3333/api/v1
+    description: Desenvolvimento local
+  - url: https://staging-api.mynotes.app/api/v1
+    description: Homologação
+  - url: https://api.mynotes.app/api/v1
+    description: Produção
+
+tags:
+  - name: Auth
+    description: Cadastro, login, renovação de sessão e recuperação de senha.
+  - name: Users
+    description: Perfil, preferências e sessões ativas.
+  - name: Notes
+    description: Criação, edição, busca, arquivamento e lixeira de notas.
+  - name: Notebooks
+    description: Organização hierárquica das notas.
+  - name: Tags
+    description: Marcadores livres.
+  - name: Attachments
+    description: Arquivos anexados a notas.
+  - name: Sync
+    description: Sincronização incremental para clientes offline-first.
+  - name: Health
+    description: Sondas de liveness e readiness.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------- Auth ----
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Autentica um usuário
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Autenticado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: |
+            Credenciais inválidas. A resposta é idêntica para e-mail inexistente
+            e senha errada, para não permitir enumeração de contas.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renova o par de tokens
+      description: |
+        Consome o refresh token e devolve um par novo (rotação). O token enviado
+        é invalidado. Reutilizar um refresh já consumido revoga **todas** as
+        sessões do usuário — é o sinal de que o token vazou.
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        "200":
+          description: Par de tokens renovado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+        "401":
+          description: Refresh token inválido, expirado ou já utilizado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Encerra a sessão atual
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                allDevices:
+                  type: boolean
+                  default: false
+                  description: Se verdadeiro, revoga todas as sessões do usuário.
+      responses:
+        "204":
+          description: Sessão encerrada.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Solicita recuperação de senha
+      description: |
+        Responde `202` mesmo que o e-mail não exista — não revelamos quais
+        endereços possuem conta.
+      operationId: forgotPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "202":
+          description: Se houver conta, um e-mail foi enviado.
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Redefine a senha com um token de recuperação
+      operationId: resetPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  $ref: "#/components/schemas/Password"
+      responses:
+        "204":
+          description: Senha redefinida; todas as sessões anteriores foram revogadas.
+        "401":
+          description: Token de recuperação inválido ou expirado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  # --------------------------------------------------------------- Users ----
+  /users:
+    post:
+      tags: [Users]
+      summary: Cria uma conta
+      description: |
+        Cadastrar **não autentica**: a resposta traz o usuário criado, sem
+        tokens. O cliente segue para `POST /auth/login`, que é o único lugar onde
+        credenciais viram sessão.
+
+        Não há header `Location` porque não existe URL pública para o usuário
+        criado — ele se lê em `GET /users/me`, já autenticado.
+      operationId: createUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInput"
+      responses:
+        "201":
+          description: Conta criada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Dados do usuário autenticado
+      operationId: getCurrentUser
+      responses:
+        "200":
+          description: Perfil do usuário.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Users]
+      summary: Atualiza o perfil
+      operationId: updateCurrentUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                  description: Nome completo.
+      responses:
+        "200":
+          description: Perfil atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [Users]
+      summary: Solicita a exclusão da conta
+      description: |
+        Agenda a exclusão definitiva. Os dados são apagados em até 30 dias; um
+        e-mail de confirmação permite cancelar nesse período.
+      operationId: deleteCurrentUser
+      responses:
+        "202":
+          description: |
+            Exclusão agendada. Todas as sessões são revogadas imediatamente; os
+            dados são apagados na data indicada, e até lá a operação é cancelável.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scheduledAt]
+                properties:
+                  scheduledAt:
+                    type: string
+                    format: date-time
+                    description: Quando os dados serão apagados definitivamente.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/password:
+    put:
+      tags: [Users]
+      summary: Altera a senha
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  $ref: "#/components/schemas/Password"
+      responses:
+        "204":
+          description: Senha alterada; as demais sessões foram revogadas.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /users/me/sessions:
+    get:
+      tags: [Users]
+      summary: Lista as sessões ativas
+      operationId: listSessions
+      responses:
+        "200":
+          description: Sessões ativas do usuário.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /users/me/sessions/{sessionId}:
+    delete:
+      tags: [Users]
+      summary: Revoga uma sessão
+      operationId: revokeSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Uuid"
+      responses:
+        "204":
+          description: Sessão revogada.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /users/me/export:
+    get:
+      tags: [Users]
+      summary: Exporta todos os dados do usuário
+      description: Direito de portabilidade — devolve notas, cadernos e tags em JSON.
+      operationId: exportUserData
+      responses:
+        "200":
+          description: Arquivo de exportação.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  # --------------------------------------------------------------- Notes ----
+  /notes:
+    get:
+      tags: [Notes]
+      summary: Lista notas
+      operationId: listNotes
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: q
+          in: query
+          description: Busca full-text em título e conteúdo, sem sensibilidade a acentos.
+          schema:
+            type: string
+            maxLength: 200
+        - name: notebookId
+          in: query
+          schema:
+            $ref: "#/components/schemas/Uuid"
+        - name: tagIds
+          in: query
+          description: Notas que tenham **todas** as tags informadas.
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/Uuid"
+          style: form
+          explode: false
+        - name: filter
+          in: query
+          description: Recorte da coleção. O padrão exclui arquivadas e a lixeira.
+          schema:
+            type: string
+            enum: [all, pinned, archived, trashed]
+            default: all
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [updatedAt, createdAt, title]
+            default: updatedAt
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Página de notas. O corpo das notas **não** é incluído; use `preview`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NoteSummary"
+                  meta:
+                    $ref: "#/components/schemas/CursorMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    post:
+      tags: [Notes]
+      summary: Cria uma nota
+      operationId: createNote
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteInput"
+      responses:
+        "201":
+          description: Nota criada.
+          headers:
+            Location:
+              description: URI da nota criada.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /notes/{noteId}:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [Notes]
+      summary: Obtém uma nota
+      operationId: getNote
+      responses:
+        "200":
+          description: Nota completa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Notes]
+      summary: Atualiza uma nota
+      description: |
+        Atualização parcial. Envie `version` para controle de concorrência
+        otimista: se a versão no servidor for outra, a resposta é `409` com o
+        estado atual, e cabe ao cliente reconciliar.
+      operationId: updateNote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNoteInput"
+      responses:
+        "200":
+          description: Nota atualizada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conflito de versão.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Problem"
+                  - type: object
+                    properties:
+                      serverState:
+                        $ref: "#/components/schemas/Note"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+    delete:
+      tags: [Notes]
+      summary: Move a nota para a lixeira
+      description: |
+        Exclusão reversível. A nota é apagada definitivamente 30 dias depois.
+        Para apagar imediatamente, use `?permanent=true`.
+      operationId: deleteNote
+      parameters:
+        - name: permanent
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "204":
+          description: Nota removida.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notes/{noteId}/restore:
+    post:
+      tags: [Notes]
+      summary: Restaura uma nota da lixeira
+      operationId: restoreNote
+      parameters:
+        - $ref: "#/components/parameters/NoteId"
+      responses:
+        "200":
+          description: Nota restaurada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A nota não está na lixeira.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /notes/{noteId}/tags:
+    put:
+      tags: [Notes]
+      summary: Substitui as tags da nota
+      operationId: setNoteTags
+      parameters:
+        - $ref: "#/components/parameters/NoteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tagIds]
+              properties:
+                tagIds:
+                  type: array
+                  maxItems: 50
+                  items:
+                    $ref: "#/components/schemas/Uuid"
+      responses:
+        "200":
+          description: Tags atualizadas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /notes/{noteId}/versions:
+    get:
+      tags: [Notes]
+      summary: Histórico de versões da nota
+      operationId: listNoteVersions
+      parameters:
+        - $ref: "#/components/parameters/NoteId"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Versões anteriores, da mais recente para a mais antiga.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NoteVersion"
+                  meta:
+                    $ref: "#/components/schemas/CursorMeta"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ----------------------------------------------------------- Notebooks ----
+  /notebooks:
+    get:
+      tags: [Notebooks]
+      summary: Lista os cadernos
+      operationId: listNotebooks
+      responses:
+        "200":
+          description: Cadernos do usuário, com a contagem de notas de cada um.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notebook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Notebooks]
+      summary: Cria um caderno
+      operationId: createNotebook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNotebookInput"
+      responses:
+        "201":
+          description: Caderno criado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /notebooks/{notebookId}:
+    parameters:
+      - name: notebookId
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Uuid"
+    patch:
+      tags: [Notebooks]
+      summary: Atualiza um caderno
+      operationId: updateNotebook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                color:
+                  $ref: "#/components/schemas/HexColor"
+                parentId:
+                  oneOf:
+                    - $ref: "#/components/schemas/Uuid"
+                    - type: "null"
+                position:
+                  type: integer
+                  minimum: 0
+      responses:
+        "200":
+          description: Caderno atualizado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notebook"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          description: |
+            Validação falhou — inclui a tentativa de criar um ciclo na hierarquia
+            (`NOTEBOOK_CYCLE`) ou de exceder 3 níveis (`NOTEBOOK_TOO_DEEP`).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+    delete:
+      tags: [Notebooks]
+      summary: Exclui um caderno
+      description: As notas contidas não são apagadas — elas voltam para a raiz.
+      operationId: deleteNotebook
+      responses:
+        "204":
+          description: Caderno excluído.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------- Tags ----
+  /tags:
+    get:
+      tags: [Tags]
+      summary: Lista as tags
+      operationId: listTags
+      responses:
+        "200":
+          description: Tags do usuário, com a contagem de uso.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Tag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Tags]
+      summary: Cria uma tag
+      operationId: createTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                color:
+                  $ref: "#/components/schemas/HexColor"
+      responses:
+        "201":
+          description: Tag criada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /tags/{tagId}:
+    parameters:
+      - name: tagId
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Uuid"
+    patch:
+      tags: [Tags]
+      summary: Atualiza uma tag
+      operationId: updateTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 40
+                color:
+                  $ref: "#/components/schemas/HexColor"
+      responses:
+        "200":
+          description: Tag atualizada.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Tags]
+      summary: Exclui uma tag
+      description: A tag é removida de todas as notas; as notas permanecem.
+      operationId: deleteTag
+      responses:
+        "204":
+          description: Tag excluída.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # --------------------------------------------------------- Attachments ----
+  /notes/{noteId}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/NoteId"
+    get:
+      tags: [Attachments]
+      summary: Lista os anexos de uma nota
+      operationId: listAttachments
+      responses:
+        "200":
+          description: Anexos da nota.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Attachment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Attachments]
+      summary: Solicita uma URL de upload
+      description: |
+        O binário **não** passa pela API. Esta rota devolve uma URL pré-assinada
+        para envio direto ao object storage e registra o metadado do anexo.
+        Confirme o envio com `POST /attachments/{attachmentId}/complete`.
+      operationId: createAttachmentUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filename, mimeType, sizeBytes]
+              properties:
+                filename:
+                  type: string
+                  maxLength: 255
+                mimeType:
+                  type: string
+                  examples: ["image/png"]
+                sizeBytes:
+                  type: integer
+                  minimum: 1
+                  maximum: 26214400
+                  description: Máximo de 25 MB.
+      responses:
+        "201":
+          description: Upload autorizado.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attachment, uploadUrl, expiresAt]
+                properties:
+                  attachment:
+                    $ref: "#/components/schemas/Attachment"
+                  uploadUrl:
+                    type: string
+                    format: uri
+                  expiresAt:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: Arquivo acima do limite permitido.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /attachments/{attachmentId}:
+    delete:
+      tags: [Attachments]
+      summary: Exclui um anexo
+      operationId: deleteAttachment
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Uuid"
+      responses:
+        "204":
+          description: Anexo excluído.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /attachments/{attachmentId}/complete:
+    post:
+      tags: [Attachments]
+      summary: Confirma a conclusão do upload
+      description: |
+        Chamado pelo cliente após enviar o binário para a `uploadUrl`. O servidor
+        verifica tamanho e tipo real do arquivo no storage e move o anexo de
+        `pending` para `ready`. Anexos que ficam `pending` por mais de 24 h são
+        removidos por um job.
+      operationId: completeAttachmentUpload
+      parameters:
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/Uuid"
+      responses:
+        "200":
+          description: Upload confirmado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: O arquivo enviado não corresponde ao metadado declarado.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  # ---------------------------------------------------------------- Sync ----
+  /sync/push:
+    post:
+      tags: [Sync]
+      summary: Envia operações locais pendentes
+      description: |
+        Idempotente por `opId`: o servidor guarda os identificadores já aplicados
+        por 7 dias e ignora repetições. Isso é o que impede que um timeout de rede
+        duplique notas.
+
+        Operações que conflitam não são aplicadas — voltam em `conflicts`, com o
+        estado atual do servidor, para o cliente reconciliar sem outra viagem.
+      operationId: syncPush
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operations]
+              properties:
+                operations:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    $ref: "#/components/schemas/SyncOperation"
+      responses:
+        "200":
+          description: Resultado por operação.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPushResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /sync/pull:
+    get:
+      tags: [Sync]
+      summary: Baixa as mudanças desde o cursor
+      description: |
+        Inclui exclusões como *tombstones* (`deletedAt` preenchido). Sem elas, uma
+        nota apagada em um dispositivo reapareceria no outro.
+
+        O cursor é sempre do relógio **do servidor** — relógio de dispositivo não
+        é confiável.
+      operationId: syncPull
+      parameters:
+        - name: cursor
+          in: query
+          description: Cursor devolvido no pull anterior. Ausente = sincronização inicial.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Mudanças desde o cursor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPullResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # -------------------------------------------------------------- Health ----
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness
+      description: O processo está de pé. Não toca em dependências.
+      operationId: healthLive
+      security: []
+      responses:
+        "200":
+          description: Vivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: ok
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness
+      description: Verifica banco e Redis. É esta sonda que o balanceador consulta.
+      operationId: healthReady
+      security: []
+      responses:
+        "200":
+          description: Pronto para receber tráfego.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+        "503":
+          description: Alguma dependência está indisponível.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthReport"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token obtido em `/auth/login` ou `/auth/refresh`.
+
+  parameters:
+    NoteId:
+      name: noteId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Uuid"
+    Cursor:
+      name: cursor
+      in: query
+      description: Cursor de continuação, vindo de `meta.nextCursor`.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: |
+        UUID gerado pelo cliente. Repetir a requisição com a mesma chave devolve o
+        resultado original em vez de criar um recurso duplicado. Validade: 24 h.
+      schema:
+        $ref: "#/components/schemas/Uuid"
+
+  responses:
+    Unauthorized:
+      description: Token ausente, inválido ou expirado.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: |
+        Recurso inexistente — ou pertencente a outro usuário. Não distinguimos os
+        dois casos: `403` confirmaria a existência do recurso.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: "Conflito com o estado atual (ex.: e-mail ou tag já em uso)."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ValidationFailed:
+      description: Corpo ou parâmetros inválidos.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/ValidationProblem"
+    TooManyRequests:
+      description: Limite de requisições excedido.
+      headers:
+        Retry-After:
+          description: Segundos a aguardar antes de tentar de novo.
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+      examples: ["018f2e9a-7c3b-7000-8000-a1b2c3d4e5f6"]
+
+    HexColor:
+      type: string
+      pattern: "^#[0-9a-fA-F]{6}$"
+      examples: ["#4f46e5"]
+
+    Password:
+      type: string
+      minLength: 12
+      maxLength: 128
+      description: |
+        Mínimo de 12 caracteres. Verificada contra listas públicas de senhas
+        vazadas. Não exigimos combinação de tipos de caractere.
+
+    Problem:
+      type: object
+      description: Erro conforme a RFC 9457.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI que identifica o tipo do problema.
+        title:
+          type: string
+          description: Resumo legível, estável por tipo.
+        status:
+          type: integer
+          description: Código HTTP, repetido no corpo.
+        detail:
+          type: string
+          description: Explicação específica desta ocorrência.
+        instance:
+          type: string
+          description: Caminho da requisição que falhou.
+        code:
+          type: string
+          pattern: "^[A-Z][A-Z0-9_]*$"
+          description: |
+            Código estável de máquina. **É contra este campo que o cliente deve
+            programar** — `title` e `detail` podem mudar de redação.
+        requestId:
+          $ref: "#/components/schemas/Uuid"
+
+    ValidationProblem:
+      allOf:
+        - $ref: "#/components/schemas/Problem"
+        - type: object
+          properties:
+            errors:
+              type: array
+              items:
+                type: object
+                required: [field, code, message]
+                properties:
+                  field:
+                    type: string
+                    description: Caminho do campo, em notação de ponto.
+                  code:
+                    type: string
+                  message:
+                    type: string
+
+    CursorMeta:
+      type: object
+      required: [hasMore]
+      properties:
+        nextCursor:
+          type: [string, "null"]
+          description: Ausente ou nulo quando não há mais páginas.
+        hasMore:
+          type: boolean
+        total:
+          type: [integer, "null"]
+          description: Só presente quando o cálculo é barato; nunca confie na presença.
+
+    User:
+      type: object
+      description: |
+        Perfil do usuário. A v1 persiste apenas o essencial; avatar, preferências
+        e verificação de e-mail entram depois — como campos **opcionais**, o que
+        é uma mudança retrocompatível e não exige uma v2 (ver ADR-0008).
+      required: [id, email, name, createdAt, updatedAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          description: Nome completo.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Session:
+      type: object
+      required: [id, createdAt, expiresAt, current]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        deviceName:
+          type: [string, "null"]
+        ipAddress:
+          type: [string, "null"]
+        current:
+          type: boolean
+          description: Verdadeiro na sessão que fez esta requisição.
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, tokenType]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          description: Validade do access token, em segundos.
+          examples: [900]
+
+    AuthSession:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        tokens:
+          $ref: "#/components/schemas/TokenPair"
+
+    CreateUserInput:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: Nome completo.
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          $ref: "#/components/schemas/Password"
+
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        deviceName:
+          type: string
+          maxLength: 100
+          description: Rótulo exibido na lista de sessões ativas.
+
+    NoteSummary:
+      type: object
+      description: Nota sem o corpo — usada em listagens.
+      required: [id, title, preview, isPinned, isArchived, version, createdAt, updatedAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        title:
+          type: string
+        preview:
+          type: string
+          description: Primeiros ~200 caracteres em texto plano.
+        notebookId:
+          type: [string, "null"]
+          format: uuid
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+        isPinned:
+          type: boolean
+        isArchived:
+          type: boolean
+        deletedAt:
+          type: [string, "null"]
+          format: date-time
+        version:
+          type: integer
+          description: Incrementa a cada escrita; base do controle de concorrência.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Note:
+      allOf:
+        - $ref: "#/components/schemas/NoteSummary"
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: string
+              description: Conteúdo em Markdown.
+            attachments:
+              type: array
+              items:
+                $ref: "#/components/schemas/Attachment"
+
+    CreateNoteInput:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+          maxLength: 1048576
+          default: ""
+          description: Markdown, até 1 MiB.
+        notebookId:
+          type: [string, "null"]
+          format: uuid
+        tagIds:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/Uuid"
+        isPinned:
+          type: boolean
+          default: false
+        clientId:
+          $ref: "#/components/schemas/Uuid"
+        clientUpdatedAt:
+          type: string
+          format: date-time
+
+    UpdateNoteInput:
+      type: object
+      description: Ao menos um campo deve ser enviado.
+      minProperties: 1
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+          maxLength: 1048576
+        notebookId:
+          type: [string, "null"]
+          format: uuid
+        isPinned:
+          type: boolean
+        isArchived:
+          type: boolean
+        version:
+          type: integer
+          description: Versão que o cliente viu. Divergiu, responde `409`.
+        clientUpdatedAt:
+          type: string
+          format: date-time
+
+    NoteVersion:
+      type: object
+      required: [id, version, title, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        version:
+          type: integer
+        title:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Notebook:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        name:
+          type: string
+        color:
+          type: [string, "null"]
+        parentId:
+          type: [string, "null"]
+          format: uuid
+        position:
+          type: integer
+        noteCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateNotebookInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        color:
+          $ref: "#/components/schemas/HexColor"
+        parentId:
+          type: [string, "null"]
+          format: uuid
+          description: Profundidade máxima de 3 níveis.
+
+    Tag:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        name:
+          type: string
+        color:
+          type: [string, "null"]
+        noteCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    Attachment:
+      type: object
+      required: [id, filename, mimeType, sizeBytes, status, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Uuid"
+        filename:
+          type: string
+        mimeType:
+          type: string
+        sizeBytes:
+          type: integer
+        status:
+          type: string
+          enum: [pending, ready, failed]
+          description: "`pending` até o upload direto ao storage ser confirmado."
+        downloadUrl:
+          type: [string, "null"]
+          format: uri
+          description: URL pré-assinada, válida por 15 minutos.
+        createdAt:
+          type: string
+          format: date-time
+
+    SyncOperation:
+      type: object
+      required: [opId, type, entityId, clientUpdatedAt]
+      properties:
+        opId:
+          $ref: "#/components/schemas/Uuid"
+        type:
+          type: string
+          enum:
+            - note.create
+            - note.update
+            - note.delete
+            - note.restore
+            - notebook.create
+            - notebook.update
+            - notebook.delete
+            - tag.create
+            - tag.update
+            - tag.delete
+        entityId:
+          $ref: "#/components/schemas/Uuid"
+        baseVersion:
+          type: [integer, "null"]
+          description: Versão que o cliente tinha. Nulo em operações de criação.
+        clientUpdatedAt:
+          type: string
+          format: date-time
+          description: Relógio do cliente — usado só para desempate, nunca como cursor.
+        payload:
+          type: object
+          additionalProperties: true
+
+    SyncPushResult:
+      type: object
+      required: [applied, conflicts, rejected, serverTime]
+      properties:
+        applied:
+          type: array
+          items:
+            type: object
+            required: [opId, entityId, version]
+            properties:
+              opId:
+                $ref: "#/components/schemas/Uuid"
+              entityId:
+                $ref: "#/components/schemas/Uuid"
+              version:
+                type: integer
+        conflicts:
+          type: array
+          items:
+            type: object
+            required: [opId, entityId, reason, serverVersion]
+            properties:
+              opId:
+                $ref: "#/components/schemas/Uuid"
+              entityId:
+                $ref: "#/components/schemas/Uuid"
+              reason:
+                type: string
+                enum: [version_mismatch, deleted_on_server]
+              serverVersion:
+                type: integer
+              serverState:
+                type: object
+                additionalProperties: true
+        rejected:
+          type: array
+          items:
+            type: object
+            required: [opId, reason]
+            properties:
+              opId:
+                $ref: "#/components/schemas/Uuid"
+              reason:
+                type: string
+                enum: [not_found, forbidden, invalid_payload, quota_exceeded]
+              detail:
+                type: string
+        serverTime:
+          type: string
+          format: date-time
+
+    SyncPullResult:
+      type: object
+      required: [changes, nextCursor, hasMore, serverTime]
+      properties:
+        changes:
+          type: object
+          properties:
+            notes:
+              type: array
+              items:
+                $ref: "#/components/schemas/Note"
+            notebooks:
+              type: array
+              items:
+                $ref: "#/components/schemas/Notebook"
+            tags:
+              type: array
+              items:
+                $ref: "#/components/schemas/Tag"
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+          description: Verdadeiro quando ainda há mudanças; chame de novo com o novo cursor.
+        serverTime:
+          type: string
+          format: date-time
+
+    HealthReport:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        checks:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [up, down]
+              latencyMs:
+                type: number
+        version:
+          type: string
+        uptime:
+          type: number
