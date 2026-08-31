@@ -22,7 +22,7 @@ allowBuilds:
 catalog:
   # TS fixado em 6.0.x: o @nestjs/cli 12 depende de ~6.0.2 e o typescript-eslint
   # exige <6.1.0. O TS 7 já saiu, mas ainda quebra o typescript-eslint.
-  typescript: ~6.0.2
+  typescript: ~7.0.2
   zod: ^4.5.0
   eslint: ^10.0.0
   prettier: ^3.9.0
