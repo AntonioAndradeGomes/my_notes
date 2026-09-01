@@ -12,7 +12,6 @@ concurrency:
 
 env:
   NODE_VERSION: "24"
-  PNPM_VERSION: "11"
 
 jobs:
   # ---------------------------------------------------------------------------
@@ -27,7 +26,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       api-contract: ${{ steps.filter.outputs.api-contract }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -40,7 +39,11 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'turbo.json'
             mobile:
-              - 'apps/mobile/**'
+              # Só o projeto de verdade dispara o job — mudança de README não.
+              # Enquanto não houver pubspec.yaml, o job nunca roda.
+              - 'apps/mobile/pubspec.yaml'
+              - 'apps/mobile/lib/**'
+              - 'apps/mobile/test/**'
             docs:
               - 'docs/**'
               - '**/*.md'
@@ -76,15 +79,15 @@ jobs:
       JWT_ACCESS_SECRET: ci-access-secret
       JWT_REFRESH_SECRET: ci-refresh-secret
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # o Turborepo precisa do histórico para o cache remoto
 
+      # Sem `version`: a action lê o campo `packageManager` do package.json.
+      # Passar os dois faz a action abortar com "Multiple versions of pnpm specified".
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -124,7 +127,7 @@ jobs:
       run:
         working-directory: apps/mobile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.41.1"
@@ -144,11 +147,9 @@ jobs:
     if: needs.changes.outputs.api-contract == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
@@ -163,11 +164,9 @@ jobs:
     if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
