@@ -55,6 +55,45 @@ As entradas são geradas a partir dos commits convencionais a cada release.
 - Exclusão de conta agendada (202) com 30 dias de arrependimento
 - 29 testes: 15 unitários com repositórios em memória, 14 e2e contra Postgres real
 
+### Adicionado — notas
+
+- Cor da nota como enum do Postgres (`none`, `red`, `orange`, `yellow`, `green`,
+  `teal`, `blue`, `purple`, `pink`). O valor persistido é o **nome** da
+  cor, nunca o hexadecimal: cabe ao cliente escolher o tom conforme o tema claro
+  ou escuro. Filtro por cor incluído no contrato de `GET /notes`.
+
+- Tabelas `tags`, `note_tags`, `attachments` e `note_versions`. Tag é por usuário
+  (`UNIQUE (user_id, name)`, `citext`) e a ligação com notas usa chave composta,
+  o que impede aplicar a mesma tag duas vezes na mesma nota.
+- A paleta de cores passou a ser compartilhada por notas e tags: o enum `note_color`
+  foi renomeado para `palette_color`, preservando os dados.
+
+### Corrigido — documentação do app Flutter
+
+- A ADR-0006 registrava uma stack (Riverpod, Clean Architecture) que **nunca foi
+  decidida pelo time** — era suposição apresentada como decisão. **Removida**, não
+  substituída: uma ADR existe para registrar decisões reais, e aquela não
+  registrava nenhuma. O número 0006 fica vago.
+- ADR-0012 estabelece a arquitetura do app: MVVM conforme o guia oficial do
+  Flutter, `get_it`, `go_router`, `ChangeNotifier`, padrão Command, `result_dart`,
+  `dio`, `drift` e `freezed`. Só o pacote de armazenamento seguro segue em aberto.
+- O alvo passou de "Android e iOS" para **cinco plataformas** (iOS, Android,
+  macOS, Windows, Linux), com três layouts responsivos.
+- `architecture/mobile.md` e `apps/mobile/README.md` reescritos; referências
+  desatualizadas corrigidas em overview, offline-sync, roadmap e coding-standards.
+- Quatro escolhas ficaram registradas como **em aberto** em vez de supostas:
+  banco local, cliente HTTP, geração de modelos e armazenamento seguro.
+- ADR-0011 nunca chegara ao índice de ADRs — uma substituição de texto falhou em
+  silêncio quando foi adicionada.
+
+### Removido
+
+- Cadernos saíram do escopo: as duas rotas, os schemas `Notebook` e
+  `CreateNotebookInput`, o campo `notebookId` das notas, os códigos de erro
+  `NOTEBOOK_CYCLE` e `NOTEBOOK_TOO_DEEP` e as operações de sync correspondentes.
+  Nunca chegaram ao schema do banco, então não houve migration. A justificativa
+  e o caminho de volta estão em docs/roadmap.md.
+
 ### Corrigido
 
 - `allowBuilds` no `pnpm-workspace.yaml` liberando o postinstall do esbuild, que

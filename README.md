@@ -31,16 +31,16 @@ completa. As aplicações começam na Fase 1. Ver [roadmap](docs/roadmap.md).
 
 ## Stack
 
-| Camada          | Tecnologia                         | Decisão                                                    |
-| --------------- | ---------------------------------- | ---------------------------------------------------------- |
-| Monorepo        | pnpm workspaces + Turborepo        | [ADR-0001](docs/adr/0001-monorepo-pnpm-turborepo.md)       |
-| Backend         | NestJS 12 · Node 24 · TypeScript 6 | [ADR-0002](docs/adr/0002-backend-nestjs.md)                |
-| Banco           | PostgreSQL 17 · Prisma             | [ADR-0003](docs/adr/0003-postgresql-prisma.md)             |
-| Autenticação    | JWT + refresh rotativo             | [ADR-0004](docs/adr/0004-auth-jwt-refresh-rotativo.md)     |
-| Web             | Next.js 16 · App Router · Tailwind | [ADR-0005](docs/adr/0005-frontend-nextjs-app-router.md)    |
-| Mobile          | Flutter 3.41 · Riverpod · Drift    | [ADR-0006](docs/adr/0006-mobile-flutter-riverpod.md)       |
-| Contrato        | OpenAPI 3.1, design-first          | [ADR-0007](docs/adr/0007-contrato-api-openapi-first.md)    |
-| Observabilidade | OpenTelemetry · Pino               | [ADR-0010](docs/adr/0010-observabilidade-opentelemetry.md) |
+| Camada           | Tecnologia                         | Decisão                                                    |
+| ---------------- | ---------------------------------- | ---------------------------------------------------------- |
+| Monorepo         | pnpm workspaces + Turborepo        | [ADR-0001](docs/adr/0001-monorepo-pnpm-turborepo.md)       |
+| Backend          | NestJS 12 · Node 24 · TypeScript 6 | [ADR-0002](docs/adr/0002-backend-nestjs.md)                |
+| Banco            | PostgreSQL 17 · Prisma             | [ADR-0003](docs/adr/0003-postgresql-prisma.md)             |
+| Autenticação     | JWT + refresh rotativo             | [ADR-0004](docs/adr/0004-auth-jwt-refresh-rotativo.md)     |
+| Web              | Next.js 16 · App Router · Tailwind | [ADR-0005](docs/adr/0005-frontend-nextjs-app-router.md)    |
+| Mobile e desktop | Flutter 3.41 · MVVM · get_it       | [ADR-0012](docs/adr/0012-mobile-mvvm-get-it-commands.md)   |
+| Contrato         | OpenAPI 3.1, design-first          | [ADR-0007](docs/adr/0007-contrato-api-openapi-first.md)    |
+| Observabilidade  | OpenTelemetry · Pino               | [ADR-0010](docs/adr/0010-observabilidade-opentelemetry.md) |
 
 ## Estrutura
 
@@ -49,7 +49,7 @@ mynotes/
 ├── apps/
 │   ├── api/        # backend NestJS
 │   ├── web/        # frontend Next.js
-│   └── mobile/     # app Flutter
+│   └── mobile/     # app Flutter (iOS, Android, macOS, Windows, Linux)
 ├── packages/
 │   ├── contracts/  # schemas e tipos compartilhados (gerados do OpenAPI)
 │   ├── ui/         # design system React
