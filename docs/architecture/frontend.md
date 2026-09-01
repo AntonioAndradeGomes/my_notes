@@ -26,7 +26,6 @@ src/
 │   │   ├── layout.tsx           # sidebar, atalhos, guarda de sessão
 │   │   ├── page.tsx             # notas recentes
 │   │   ├── notes/[id]/page.tsx
-│   │   ├── notebooks/[id]/page.tsx
 │   │   └── search/page.tsx
 │   ├── api/
 │   │   ├── auth/refresh/route.ts
@@ -80,7 +79,7 @@ de sincronia de UI:
 
 | Categoria                  | Ferramenta                | Exemplo                 |
 | -------------------------- | ------------------------- | ----------------------- |
-| Estado de servidor         | TanStack Query            | notas, cadernos, tags   |
+| Estado de servidor         | TanStack Query            | notas e tags            |
 | Estado de UI local         | `useState` / `useReducer` | modal aberto, aba ativa |
 | Estado de UI compartilhado | Zustand (mínimo)          | sidebar recolhida, tema |
 

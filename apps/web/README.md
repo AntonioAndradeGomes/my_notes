@@ -19,7 +19,6 @@ src/
 │   ├── (auth)/              # login, cadastro, recuperação de senha
 │   ├── (app)/               # área autenticada
 │   │   ├── notes/[id]/
-│   │   ├── notebooks/
 │   │   └── search/
 │   ├── layout.tsx
 │   └── api/                 # route handlers (BFF: refresh de sessão, uploads)

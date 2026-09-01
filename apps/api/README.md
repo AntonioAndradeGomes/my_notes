@@ -1,7 +1,7 @@
 # @mynotes/api — Backend NestJS
 
-API REST do MyNotes. Autoridade sobre o domínio: autenticação, notas, cadernos,
-tags, anexos e sincronização.
+API REST do MyNotes. Autoridade sobre o domínio: autenticação, notas, tags,
+anexos e sincronização.
 
 | Item          | Valor                                                 |
 | ------------- | ----------------------------------------------------- |
@@ -31,7 +31,6 @@ src/
 │   ├── auth/                # login, refresh, logout ✅
 │   ├── users/               # criação de conta, perfil, senha, sessões ✅
 │   ├── notes/               # CRUD, busca, arquivo, lixeira, versões
-│   ├── notebooks/           # organização hierárquica
 │   ├── tags/
 │   ├── attachments/         # upload pré-assinado para S3/MinIO
 │   ├── sharing/             # links públicos e colaboração
@@ -68,7 +67,9 @@ test/
 ## Scripts
 
 ```bash
-pnpm --filter @mynotes/api dev          # nest start --watch
+make api                                # sobe o Postgres e a API, com hot reload
+make stop-api                           # libera a porta 3333 se sobrou processo
+pnpm --filter @mynotes/api dev          # só a API (assume o banco de pé)
 pnpm --filter @mynotes/api db:migrate   # prisma migrate dev
 pnpm --filter @mynotes/api db:studio    # prisma studio
 pnpm --filter @mynotes/api test         # unitários
@@ -103,5 +104,5 @@ curinga casa com qualquer rota; registrado antes, engoliria as rotas reais.
 
 Fatia vertical de fundação pronta: configuração validada por Zod, Prisma
 conectado, tratamento de erros em `problem+json` e health checks. Os módulos de
-domínio (auth, notes, notebooks, tags, sync) são o restante da Fase 1 —
+domínio (notes, tags, sync) são o restante da Fase 1 —
 ver [roadmap](../../docs/roadmap.md).

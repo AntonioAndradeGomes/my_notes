@@ -6,7 +6,7 @@ justificativa na PR.
 
 ## URL e verbos
 
-- Substantivos no plural: `/notes`, `/notebooks`, `/tags`.
+- Substantivos no plural: `/notes`, `/tags`, `/users`.
 - Hierarquia só quando existe posse real: `/notes/{id}/attachments`.
 - Ações que não são CRUD viram sub-recurso com `POST`: `/notes/{id}/restore`.
 - `camelCase` em campos JSON; `kebab-case` em segmentos de URL.
@@ -80,7 +80,7 @@ Trate o cursor como **opaco**. O formato pode mudar sem aviso.
 ## Filtros e ordenação
 
 ```http
-GET /notes?q=reunião&notebookId=018f...&tagIds=018a...,018b...&filter=pinned&sort=updatedAt&order=desc
+GET /notes?q=reunião&tagIds=018a...,018b...&filter=pinned&sort=updatedAt&order=desc
 ```
 
 - `tagIds` usa `AND`: a nota precisa ter **todas** as tags.
@@ -159,12 +159,12 @@ derrubar um app antigo.
 
 ## Campos nulos e ausentes
 
-- `null` = o campo existe e está vazio (`"notebookId": null` — nota sem caderno).
+- `null` = o campo existe e está vazio (`"deletedAt": null` — nota fora da lixeira).
 - Ausente em `PATCH` = não mexer neste campo.
 - Ausente em resposta = não incluído nesta representação (`content` não vem em listagens).
 
-A diferença importa em `PATCH`: enviar `"notebookId": null` remove a nota do
-caderno; omitir o campo a deixa onde está.
+A diferença importa em `PATCH`: enviar `"deletedAt": null` restaura a nota;
+omitir o campo deixa o estado dela intacto.
 
 ## Cabeçalhos de correlação
 

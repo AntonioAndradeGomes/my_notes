@@ -3,7 +3,7 @@ openapi: 3.1.0
 info:
   title: MyNotes API
   version: 1.0.0
-  summary: API REST do MyNotes — notas, cadernos, tags e sincronização offline.
+  summary: API REST do MyNotes — notas, tags e sincronização offline.
   description: |
     Contrato **canônico** da API do MyNotes. Este arquivo é a fonte da verdade:
     é escrito e revisado antes da implementação (ver ADR-0007) e a partir dele
@@ -47,8 +47,6 @@ tags:
     description: Perfil, preferências e sessões ativas.
   - name: Notes
     description: Criação, edição, busca, arquivamento e lixeira de notas.
-  - name: Notebooks
-    description: Organização hierárquica das notas.
   - name: Tags
     description: Marcadores livres.
   - name: Attachments
@@ -380,7 +378,7 @@ paths:
     get:
       tags: [Users]
       summary: Exporta todos os dados do usuário
-      description: Direito de portabilidade — devolve notas, cadernos e tags em JSON.
+      description: Direito de portabilidade — devolve notas e tags em JSON.
       operationId: exportUserData
       responses:
         "200":
@@ -410,10 +408,6 @@ paths:
           schema:
             type: string
             maxLength: 200
-        - name: notebookId
-          in: query
-          schema:
-            $ref: "#/components/schemas/Uuid"
         - name: tagIds
           in: query
           description: Notas que tenham **todas** as tags informadas.
@@ -421,6 +415,15 @@ paths:
             type: array
             items:
               $ref: "#/components/schemas/Uuid"
+          style: form
+          explode: false
+        - name: color
+          in: query
+          description: Filtra por uma ou mais cores.
+          schema:
+            type: array
+            items:
+              $ref: "#/components/schemas/NoteColor"
           style: form
           explode: false
         - name: filter
@@ -597,6 +600,18 @@ paths:
     put:
       tags: [Notes]
       summary: Substitui as tags da nota
+      description: |
+        Aceita **apenas ids**: a tag precisa existir antes, criada em `POST /tags`.
+
+        Foi uma escolha deliberada sobre a alternativa de aceitar nomes e criar
+        as que faltassem. Aceitar nomes economizaria uma chamada, mas todo erro
+        de digitação viraria uma tag nova — e a lista do usuário degrada sozinha,
+        sem uma tela de limpeza que ninguém usa.
+
+        Consequência para o cliente: marcar uma nota com uma tag inédita são duas
+        chamadas (`POST /tags`, depois esta). Se isso passar a incomodar, aceitar
+        `tagNames` além de `tagIds` é uma mudança **retrocompatível** — campo novo
+        e opcional, sem exigir uma v2 (ADR-0008).
       operationId: setNoteTags
       parameters:
         - $ref: "#/components/parameters/NoteId"
@@ -651,112 +666,6 @@ paths:
                       $ref: "#/components/schemas/NoteVersion"
                   meta:
                     $ref: "#/components/schemas/CursorMeta"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-
-  # ----------------------------------------------------------- Notebooks ----
-  /notebooks:
-    get:
-      tags: [Notebooks]
-      summary: Lista os cadernos
-      operationId: listNotebooks
-      responses:
-        "200":
-          description: Cadernos do usuário, com a contagem de notas de cada um.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/Notebook"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-    post:
-      tags: [Notebooks]
-      summary: Cria um caderno
-      operationId: createNotebook
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateNotebookInput"
-      responses:
-        "201":
-          description: Caderno criado.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Notebook"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "422":
-          $ref: "#/components/responses/ValidationFailed"
-
-  /notebooks/{notebookId}:
-    parameters:
-      - name: notebookId
-        in: path
-        required: true
-        schema:
-          $ref: "#/components/schemas/Uuid"
-    patch:
-      tags: [Notebooks]
-      summary: Atualiza um caderno
-      operationId: updateNotebook
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  minLength: 1
-                  maxLength: 100
-                color:
-                  $ref: "#/components/schemas/HexColor"
-                parentId:
-                  oneOf:
-                    - $ref: "#/components/schemas/Uuid"
-                    - type: "null"
-                position:
-                  type: integer
-                  minimum: 0
-      responses:
-        "200":
-          description: Caderno atualizado.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Notebook"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "422":
-          description: |
-            Validação falhou — inclui a tentativa de criar um ciclo na hierarquia
-            (`NOTEBOOK_CYCLE`) ou de exceder 3 níveis (`NOTEBOOK_TOO_DEEP`).
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/ValidationProblem"
-    delete:
-      tags: [Notebooks]
-      summary: Exclui um caderno
-      description: As notas contidas não são apagadas — elas voltam para a raiz.
-      operationId: deleteNotebook
-      responses:
-        "204":
-          description: Caderno excluído.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -1198,13 +1107,31 @@ components:
       pattern: "^#[0-9a-fA-F]{6}$"
       examples: ["#4f46e5"]
 
+    NoteColor:
+      type: string
+      description: |
+        Paleta fechada de cores de nota. O valor é o **nome da cor**, nunca um
+        hexadecimal: cabe ao cliente escolher o tom conforme o tema em uso.
+        `yellow` é um amarelo suave no tema claro e um mostarda escuro no tema
+        escuro — com um hex fixo, essa adaptação seria impossível.
+
+        `none` representa a nota sem cor. Não usamos `null` para isso: um valor
+        sempre presente evita tratamento de nulo em todos os clientes.
+
+        Clientes devem degradar graciosamente ao receber um valor desconhecido
+        (renderizando como `none`), conforme o contrato de compatibilidade da
+        ADR-0008 — a paleta pode ganhar cores sem exigir uma v2.
+      enum: [none, red, orange, yellow, green, teal, blue, purple, pink]
+      default: none
+
     Password:
       type: string
-      minLength: 12
+      minLength: 8
       maxLength: 128
       description: |
-        Mínimo de 12 caracteres. Verificada contra listas públicas de senhas
-        vazadas. Não exigimos combinação de tipos de caractere.
+        Mínimo de 8 caracteres. Verificada contra listas públicas de senhas
+        vazadas. Não exigimos combinação de tipos de caractere: a evidência é
+        que essa regra produz senhas piores, não melhores.
 
     Problem:
       type: object
@@ -1369,7 +1296,7 @@ components:
     NoteSummary:
       type: object
       description: Nota sem o corpo — usada em listagens.
-      required: [id, title, preview, isPinned, isArchived, version, createdAt, updatedAt]
+      required: [id, title, preview, color, isPinned, isArchived, version, createdAt, updatedAt]
       properties:
         id:
           $ref: "#/components/schemas/Uuid"
@@ -1378,9 +1305,9 @@ components:
         preview:
           type: string
           description: Primeiros ~200 caracteres em texto plano.
-        notebookId:
-          type: [string, "null"]
-          format: uuid
+        color:
+          $ref: "#/components/schemas/NoteColor"
+
         tags:
           type: array
           items:
@@ -1429,14 +1356,13 @@ components:
           maxLength: 1048576
           default: ""
           description: Markdown, até 1 MiB.
-        notebookId:
-          type: [string, "null"]
-          format: uuid
         tagIds:
           type: array
           maxItems: 50
           items:
             $ref: "#/components/schemas/Uuid"
+        color:
+          $ref: "#/components/schemas/NoteColor"
         isPinned:
           type: boolean
           default: false
@@ -1458,9 +1384,8 @@ components:
         content:
           type: string
           maxLength: 1048576
-        notebookId:
-          type: [string, "null"]
-          format: uuid
+        color:
+          $ref: "#/components/schemas/NoteColor"
         isPinned:
           type: boolean
         isArchived:
@@ -1487,45 +1412,6 @@ components:
         createdAt:
           type: string
           format: date-time
-
-    Notebook:
-      type: object
-      required: [id, name, createdAt]
-      properties:
-        id:
-          $ref: "#/components/schemas/Uuid"
-        name:
-          type: string
-        color:
-          type: [string, "null"]
-        parentId:
-          type: [string, "null"]
-          format: uuid
-        position:
-          type: integer
-        noteCount:
-          type: integer
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-
-    CreateNotebookInput:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 100
-        color:
-          $ref: "#/components/schemas/HexColor"
-        parentId:
-          type: [string, "null"]
-          format: uuid
-          description: Profundidade máxima de 3 níveis.
 
     Tag:
       type: object
@@ -1580,9 +1466,6 @@ components:
             - note.update
             - note.delete
             - note.restore
-            - notebook.create
-            - notebook.update
-            - notebook.delete
             - tag.create
             - tag.update
             - tag.delete
@@ -1661,10 +1544,6 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Note"
-            notebooks:
-              type: array
-              items:
-                $ref: "#/components/schemas/Notebook"
             tags:
               type: array
               items:
