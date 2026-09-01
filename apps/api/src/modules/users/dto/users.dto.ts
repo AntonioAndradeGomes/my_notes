@@ -1,12 +1,16 @@
 import { z } from 'zod';
 
 /**
- * Mínimo de 12 caracteres. Não exigimos combinação de tipos de caractere: a
- * evidência é que essa regra produz senhas piores, não melhores.
+ * Mínimo de 8 caracteres — o piso absoluto recomendado pelo OWASP.
+ *
+ * Não exigimos combinação de tipos de caractere: a evidência é que essa regra
+ * produz senhas piores, não melhores. Com o piso em 8 em vez de 12, a checagem
+ * contra listas de senhas vazadas passa a ser a defesa principal contra senhas
+ * triviais — ver docs/architecture/security.md.
  */
 const password = z
   .string()
-  .min(12, 'A senha precisa de ao menos 12 caracteres')
+  .min(8, 'A senha precisa de ao menos 8 caracteres')
   .max(128, 'A senha excede o tamanho máximo de 128 caracteres');
 
 export const createUserSchema = z.object({

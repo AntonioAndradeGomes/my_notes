@@ -44,9 +44,15 @@ faz login de novo) é muito menor que o de um falso negativo.
 Argon2id, com `memoryCost=19456 KiB`, `timeCost=2`, `parallelism=1` — os parâmetros
 mínimos recomendados pelo OWASP. Nunca bcrypt novo; nunca SHA de qualquer sabor.
 
-Requisitos de senha: mínimo de 12 caracteres, verificada contra a lista de senhas
-vazadas (k-anonymity via Have I Been Pwned). Não exigimos "um símbolo e uma
-maiúscula" — a evidência é que essa regra produz senhas piores, não melhores.
+Requisitos de senha: mínimo de 8 caracteres — o piso absoluto do OWASP —
+verificada contra a lista de senhas vazadas (k-anonymity via Have I Been Pwned).
+Não exigimos "um símbolo e uma maiúscula": a evidência é que essa regra produz
+senhas piores, não melhores.
+
+> Com o piso em 8 em vez de 12, a checagem contra senhas vazadas deixa de ser um
+> reforço e passa a ser a defesa principal: é ela que barra `12345678` e `senha123`,
+> que satisfazem o comprimento mínimo. **Ainda não está implementada** — enquanto
+> não estiver, o único obstáculo a uma senha trivial é o rate limit do login.
 
 ## Autorização
 
