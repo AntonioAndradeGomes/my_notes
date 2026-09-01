@@ -1,15 +1,29 @@
 // Preset para o frontend Next.js.
-// O plugin `eslint-config-next` (regras de React, hooks e acessibilidade) entra
-// na Fase 2, junto com a aplicação web — ver docs/roadmap.md.
+import nextVitals from 'eslint-config-next/core-web-vitals';
+import nextTs from 'eslint-config-next/typescript';
 import globals from 'globals';
 
 import base from './base.js';
 
 export default [
   ...base,
+
+  // Regras de React, hooks e acessibilidade do próprio Next.
+  ...nextVitals,
+  ...nextTs,
+
   {
     languageOptions: {
       globals: { ...globals.browser },
+    },
+  },
+
+  {
+    files: ['**/*.tsx'],
+    rules: {
+      // Componentes de servidor são async por natureza e frequentemente não
+      // aguardam nada além do que já retornam.
+      '@typescript-eslint/require-await': 'off',
     },
   },
 ];

@@ -16,6 +16,7 @@ allowBuilds:
   esbuild: true
   prisma: true
   protobufjs: false
+  unrs-resolver: true
 
 # Catálogo central de versões: um único lugar para alinhar dependências
 # compartilhadas entre pacotes. Use "catalog:" no lugar da versão.
