@@ -8,21 +8,14 @@ config({ path: '../../.env' });
 
 const databaseUrl = process.env['DATABASE_URL'];
 
-if (!databaseUrl) {
-  // Falhar aqui é melhor que o Prisma receber `undefined` e produzir um erro de
-  // conexão obscuro alguns passos adiante.
-  throw new Error(
-    'DATABASE_URL não definida. Copie o .env.example para .env na raiz do monorepo ' +
-      '(ou rode `make setup`) — ver docs/guides/environment-variables.md.',
-  );
-}
-
+// A datasource só é declarada quando há URL. `prisma generate` não toca o banco:
+// exigir a variável aqui acoplaria a geração de código — e portanto o lint, o
+// typecheck e o build — a uma conexão que ele não usa. Comandos que de fato
+// precisam dela (`migrate`) falham com a mensagem do próprio Prisma.
 export default defineConfig({
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
   },
-  datasource: {
-    url: databaseUrl,
-  },
+  ...(databaseUrl ? { datasource: { url: databaseUrl } } : {}),
 });
