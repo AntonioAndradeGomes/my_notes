@@ -109,9 +109,13 @@ um nome melhor, não de um comentário.
 ## Flutter
 
 - `const` em todo widget que puder ser constante.
-- Widget não conversa com rede; ele lê de um provider.
-- `BuildContext` não atravessa as camadas de domínio e dados.
-- Estado imutável com freezed; `copyWith` em vez de mutação.
+- View não conversa com rede nem com repositório: só com o ViewModel.
+- ViewModel não conhece service — só repositório.
+- `BuildContext` não atravessa as camadas de dados.
+- Dependência entra por construtor; `getIt` só no `initModule` e nas rotas.
+- Ação assíncrona disparada pela UI vira `Command`, não `Future` solta.
+- Erro esperado volta como `Result`, não como exceção — consumido com `fold`,
+  que obriga a tratar os dois caminhos.
 - Nenhum `print` em código de produção — use o logger.
 
 ## Testes

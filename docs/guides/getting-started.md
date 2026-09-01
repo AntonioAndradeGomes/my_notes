@@ -56,8 +56,8 @@ pnpm --filter @mynotes/api db:migrate   # aplica as migrations
 pnpm --filter @mynotes/api db:seed      # popula dados de exemplo
 ```
 
-O seed cria um usuário `demo@mynotes.local` / `senha-de-demonstracao` com alguns
-cadernos e notas.
+O seed cria um usuário `demo@mynotes.local` / `senha-de-demonstracao` com
+algumas notas e tags.
 
 ## Rodando
 
@@ -75,12 +75,16 @@ Sobe API e web em paralelo, via Turborepo:
 | MinIO (console)     | <http://localhost:9001>        |
 | MailDev             | <http://localhost:1080>        |
 
-Para rodar só uma aplicação:
+Para rodar só a API — o caso mais comum enquanto a web não existe:
 
 ```bash
-pnpm --filter @mynotes/api dev
-pnpm --filter @mynotes/web dev
+make api
 ```
+
+Ele sobe o Postgres, espera o healthcheck passar e inicia a API com hot reload.
+Só o Postgres: Redis, MinIO e MailDev ainda não são usados por nenhum código.
+
+Se o banco já estiver de pé, `pnpm --filter @mynotes/api dev` pula essa etapa.
 
 ## App mobile
 

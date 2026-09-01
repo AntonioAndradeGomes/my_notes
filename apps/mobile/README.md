@@ -1,65 +1,86 @@
-# mynotes_mobile — Aplicativo Flutter
+# mynotes_app — Aplicativo Flutter
 
-App Android e iOS do MyNotes, com foco em **offline-first**: escrever uma nota
-sem rede é o caso normal, não a exceção.
+Uma base de código para **cinco plataformas**: iOS, Android, macOS, Windows e
+Linux. Desktop é alvo de primeira classe, não um mobile esticado.
 
-| Item            | Valor                                              |
-| --------------- | -------------------------------------------------- |
-| SDK             | Flutter 3.41 (Dart 3)                              |
-| Estado          | Riverpod                                           |
-| Navegação       | go_router                                          |
-| Banco local     | Drift (SQLite)                                     |
-| HTTP            | Dio + cliente gerado a partir do OpenAPI           |
-| Modelos         | freezed + json_serializable                        |
-| Armazenamento seguro | flutter_secure_storage (Keychain / Keystore) |
+Foco em **offline-first**: escrever uma nota sem rede é o caso normal, não a
+exceção.
+
+| Item | Valor |
+| --- | --- |
+| SDK | Flutter 3.41 (Dart 3) |
+| Arquitetura | MVVM por módulo — [ADR-0012](../../docs/adr/0012-mobile-mvvm-get-it-commands.md) |
+| Injeção de dependências | `get_it`, com `initModule` por módulo |
+| Navegação | `go_router` |
+| Estado | `ChangeNotifier` + `ListenableBuilder` / `ValueListenableBuilder` |
+| Assíncrono na UI | Padrão **Command** |
+| Erros | `result_dart` (`ResultDart<S, AppFailure>`) |
+| HTTP | `dio` |
+| Banco local | `drift` (SQLite) |
+| Modelos | `freezed` + `json_serializable` |
 
 ## Estrutura prevista
 
 ```text
 lib/
-├── main.dart
-├── app/                     # bootstrap, tema, rotas, injeção
 ├── core/
-│   ├── network/             # Dio, interceptors, refresh automático de token
-│   ├── storage/             # Drift, secure storage
-│   ├── sync/                # motor de sincronização e fila de operações
-│   └── error/
-└── features/
-    ├── auth/
-    ├── notes/
-    ├── notebooks/
-    └── settings/
-        ├── data/            # datasources local e remoto, repositório
-        ├── domain/          # entidades e casos de uso
-        └── presentation/    # telas, widgets, providers
+│   ├── ds/                          # design system: tokens, temas, widgets base
+│   ├── i18n/
+│   ├── services/
+│   │   ├── api_service.dart         # dio, interceptors, refresh de token
+│   │   └── storage_service.dart
+│   └── utils/
+│       ├── command.dart             # Command0, Command1
+│       └── result.dart
+├── modules/
+│   └── <modulo>/
+│       ├── models/
+│       ├── services/
+│       ├── repositories/
+│       ├── viewmodels/
+│       ├── views/
+│       └── <modulo>_module.dart     # initModule(getIt)
+├── routing/
+├── main_module.dart                 # setupDependencies()
+└── main.dart
 ```
 
-Cada feature segue a mesma divisão `data / domain / presentation`.
+Módulos previstos: `auth`, `notes`, `tags`, `settings`.
 
-## Sincronização
+## Regras que a revisão cobra
 
-O motor de sync é a parte mais delicada do app. A estratégia — fila de operações,
-delta sync por cursor, resolução de conflito e limites conhecidos — está descrita
-em [docs/architecture/offline-sync.md](../../docs/architecture/offline-sync.md).
-Leia antes de mexer em qualquer coisa sob `core/sync/`.
+- View fala com ViewModel. Só. Nunca com repositório nem com rede.
+- ViewModel fala com repositório. Nunca com service.
+- Repositório é a **fonte de verdade** de um tipo de dado — o único lugar que o muta.
+- Service não guarda estado.
+- Dependência entra por **construtor**; `getIt` só aparece no `initModule` e nas rotas.
+- Ação assíncrona disparada pela UI vira `Command`, não `Future` solta.
+- Erro esperado volta como `Result`, não como exceção — e se consome com `fold`,
+  não com `getOrNull`.
 
 ## Comandos previstos
 
 ```bash
 cd apps/mobile
 flutter pub get
-dart run build_runner watch -d      # gera freezed / drift / json
-flutter run --dart-define=API_URL=http://10.0.2.2:3333/api/v1
+flutter run -d macos    --dart-define=API_URL=http://localhost:3333/api/v1
+flutter run -d android  --dart-define=API_URL=http://10.0.2.2:3333/api/v1
 flutter test
 flutter analyze
 ```
 
-> `10.0.2.2` é como o emulador Android enxerga o `localhost` da máquina host.
-> No simulador iOS, use `http://localhost:3333`.
+> `10.0.2.2` é como o emulador Android enxerga o `localhost` da máquina host. No
+> simulador iOS e nos desktops, use `http://localhost:3333`.
 
 ## Leitura relacionada
 
 - Arquitetura: [docs/architecture/mobile.md](../../docs/architecture/mobile.md)
-- [ADR-0006](../../docs/adr/0006-mobile-flutter-riverpod.md)
+- Sincronização: [docs/architecture/offline-sync.md](../../docs/architecture/offline-sync.md)
+- [ADR-0012](../../docs/adr/0012-mobile-mvvm-get-it-commands.md) — a stack e o que foi descartado
 
-> Aplicativo ainda não implementado. Fase 3 do [roadmap](../../docs/roadmap.md).
+## Estado
+
+Aplicativo ainda não implementado — Fase 3 do [roadmap](../../docs/roadmap.md).
+
+Uma escolha segue **em aberto**, registrada como tal na ADR-0012: o pacote de
+armazenamento seguro dos tokens.

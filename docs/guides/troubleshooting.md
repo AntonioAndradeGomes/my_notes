@@ -103,6 +103,28 @@ mesmo timestamp — nesse caso, uma delas precisa ser regerada.
 
 ## API
 
+### `EADDRINUSE: address already in use :::3333`
+
+Alguma coisa já ocupa a porta da API. O `make api` verifica isso antes de subir
+e distingue dois casos:
+
+**A API já está rodando e respondendo** — normalmente uma outra aba do terminal.
+Não há o que fazer: o `nest start --watch` recarrega sozinho ao salvar um
+arquivo. Ele reporta e sai com sucesso.
+
+**A porta está travada** — um processo não responde ao health check. Interromper
+o watch do Nest com `Ctrl+C` nem sempre encerra o processo filho:
+
+```bash
+make stop-api
+```
+
+Para descobrir quem ocupa a porta, quando não for a própria API:
+
+```bash
+lsof -nP -iTCP:3333 -sTCP:LISTEN
+```
+
 ### `JWT_ACCESS_SECRET is required`
 
 A validação de ambiente está funcionando. Preencha o `.env`:
@@ -169,8 +191,8 @@ dart run build_runner build --delete-conflicting-outputs
 
 ### Alterei um modelo e o app não compila
 
-Arquivos `.g.dart` e `.freezed.dart` são gerados. Rode o `build_runner` — de
-preferência em modo watch, durante o desenvolvimento:
+Se o projeto usar geração de código, arquivos `.g.dart` e `.freezed.dart` são
+gerados. Rode o `build_runner` — de preferência em modo watch:
 
 ```bash
 dart run build_runner watch -d

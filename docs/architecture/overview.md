@@ -21,7 +21,7 @@ graph TB
 
     subgraph MyNotes
         WEB["Aplicação Web<br/>Next.js"]
-        APP["App Mobile<br/>Flutter"]
+        APP["App Flutter<br/>5 plataformas"]
         API["API REST<br/>NestJS"]
         DB[("PostgreSQL")]
     end
@@ -44,7 +44,7 @@ graph TB
 graph TB
     subgraph Clientes
         WEB["Next.js 16<br/>App Router + RSC<br/>:3000"]
-        APP["Flutter 3.41<br/>Riverpod + Drift"]
+        APP["Flutter 3.41<br/>MVVM + get_it"]
     end
 
     subgraph Servidor
@@ -143,7 +143,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant App as Flutter
-    participant Q as Fila local (Drift)
+    participant Q as Fila local (banco)
     participant A as API
 
     Note over App: offline

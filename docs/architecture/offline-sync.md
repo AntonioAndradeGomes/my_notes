@@ -14,8 +14,8 @@ espera a rede para confirmar uma ação do usuário.
 
 | Peça              | Onde                         | Papel                                         |
 | ----------------- | ---------------------------- | --------------------------------------------- |
-| Banco local       | Drift (SQLite)               | Espelho local do domínio                      |
-| Fila de operações | Tabela `sync_queue` no Drift | Escritas pendentes, na ordem em que ocorreram |
+| Banco local       | `drift` (SQLite)             | Espelho local do domínio                      |
+| Fila de operações | Tabela `sync_queue` no drift | Escritas pendentes, na ordem em que ocorreram |
 | Cursor            | `last_sync_at` por usuário   | Marca até onde já baixamos                    |
 | Motor de sync     | `core/sync/`                 | Orquestra push, pull e conflitos              |
 
@@ -106,13 +106,13 @@ Para evitar perder registros com o mesmo timestamp, o cursor de continuação é
 
 A estratégia depende do tipo de mudança:
 
-| Situação                                     | Resolução                                                                                    |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Só um lado mudou                             | Aplica direto — o caso comum                                                                 |
-| Metadados (fixado, arquivado, caderno, tags) | Last-write-wins por `clientUpdatedAt`                                                        |
-| Conteúdo, mudanças disjuntas                 | Merge automático de 3 vias, usando a versão base comum                                       |
-| Conteúdo, mudanças sobrepostas               | **Preserva as duas**: mantém a do servidor e cria uma nota "(cópia em conflito)" com a local |
-| Exclusão vs. edição                          | A edição vence — a nota volta da lixeira                                                     |
+| Situação                            | Resolução                                                                                    |
+| ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| Só um lado mudou                    | Aplica direto — o caso comum                                                                 |
+| Metadados (fixado, arquivado, tags) | Last-write-wins por `clientUpdatedAt`                                                        |
+| Conteúdo, mudanças disjuntas        | Merge automático de 3 vias, usando a versão base comum                                       |
+| Conteúdo, mudanças sobrepostas      | **Preserva as duas**: mantém a do servidor e cria uma nota "(cópia em conflito)" com a local |
+| Exclusão vs. edição                 | A edição vence — a nota volta da lixeira                                                     |
 
 A regra de ouro: **na dúvida, duplique; nunca descarte.** Uma nota duplicada é um
 incômodo de dez segundos. Uma nota perdida é um usuário perdido.

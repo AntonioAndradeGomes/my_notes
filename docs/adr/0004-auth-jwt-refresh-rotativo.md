@@ -2,7 +2,7 @@
 
 - **Status**: Aceita
 - **Data**: 2026-08-28
-- **Relacionadas**: [ADR-0005](0005-frontend-nextjs-app-router.md), [ADR-0006](0006-mobile-flutter-riverpod.md)
+- **Relacionadas**: [ADR-0005](0005-frontend-nextjs-app-router.md), [ADR-0012](0012-mobile-mvvm-get-it-commands.md)
 
 ## Contexto
 

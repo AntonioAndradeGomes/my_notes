@@ -88,10 +88,10 @@ Closes #142
 ### Breaking change
 
 ```text
-feat(api)!: remove o campo `folder` de Note
+feat(api)!: remove o campo `color` de Tag
 
-BREAKING CHANGE: `folder` foi substituído por `notebookId`. Clientes
-anteriores à v1.4.0 do app precisam atualizar. `folder` continuou sendo
+BREAKING CHANGE: `color` foi substituído por `theme`. Clientes
+anteriores à v1.4.0 do app precisam atualizar. `color` continuou sendo
 enviado por dois releases e agora foi removido.
 ```
 

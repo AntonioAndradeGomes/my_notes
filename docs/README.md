@@ -21,7 +21,7 @@ mudança de comportamento não aparece nesta pasta, ela ainda não está pronta.
 - [Visão geral](architecture/overview.md) — contexto, contêineres e fluxos principais (C4)
 - [Backend](architecture/backend.md) — camadas, módulos e convenções do NestJS
 - [Frontend](architecture/frontend.md) — App Router, RSC, estado e sessão
-- [Mobile](architecture/mobile.md) — Clean Architecture, Riverpod e armazenamento local
+- [Mobile e desktop](architecture/mobile.md) — MVVM, get_it, Commands e armazenamento local
 - [Modelo de dados](architecture/data-model.md) — entidades, relacionamentos e índices
 - [Segurança](architecture/security.md) — autenticação, autorização e modelo de ameaças
 - [Offline e sincronização](architecture/offline-sync.md) — delta sync, conflitos e limites
