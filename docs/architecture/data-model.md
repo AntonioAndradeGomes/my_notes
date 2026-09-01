@@ -9,11 +9,8 @@ o que preserva a localidade de índice sem revelar sequência de crescimento com
 ```mermaid
 erDiagram
     User ||--o{ Note : "possui"
-    User ||--o{ Notebook : "possui"
     User ||--o{ Tag : "possui"
     User ||--o{ Session : "tem"
-    Notebook ||--o{ Note : "contém"
-    Notebook ||--o{ Notebook : "aninha"
     Note }o--o{ Tag : "NoteTag"
     Note ||--o{ Attachment : "tem"
     Note ||--o{ NoteVersion : "historiza"
@@ -39,25 +36,14 @@ erDiagram
         timestamptz created_at
     }
 
-    Notebook {
-        uuid id PK
-        uuid user_id FK
-        uuid parent_id FK
-        text name
-        text color
-        int position
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
     Note {
         uuid id PK
         uuid user_id FK
-        uuid notebook_id FK
         text title
         text content
         text content_preview
         tsvector search_vector
+        note_color color
         bool is_pinned
         bool is_archived
         timestamptz deleted_at
@@ -110,6 +96,10 @@ erDiagram
     }
 ```
 
+> **Fora de escopo**: cadernos (organização hierárquica) não fazem parte desta
+> versão. A organização das notas fica por conta das tags. Se voltarem, entram
+> como tabela nova mais uma coluna anulável em `notes` — migration aditiva.
+>
 > **Escopo da v1**: `User` guarda apenas nome completo, e-mail, senha e as datas.
 > Avatar, preferências de interface e verificação de e-mail entram em fases
 > posteriores — como colunas anuláveis, o que os torna uma migration aditiva e
@@ -158,24 +148,60 @@ CREATE INDEX notes_search_idx ON notes USING GIN (search_vector);
 
 `unaccent` importa: em português, ninguém digita "reunião" com til na pressa.
 
+### Tags pertencem ao usuário, não ao sistema
+
+`tags` tem `user_id` e `@@unique([user_id, name])`. A `#trabalho` do Fulano é uma
+linha diferente da `#trabalho` da Ciclana.
+
+Uma tabela global de tags — uma linha por nome, compartilhada — pareceria mais
+econômica, mas acopla contas: renomear ou apagar afetaria estranhos, e a
+contagem de uso vazaria informação entre usuários. O ganho de espaço é
+irrelevante; o acoplamento não.
+
+`note_tags` usa chave primária composta `(note_id, tag_id)`: a própria ligação é
+a identidade, e a mesma tag não pode ser aplicada duas vezes à mesma nota. Um
+`id` próprio permitiria duplicatas. O índice extra em `tag_id` cobre o caminho
+inverso — todas as notas de uma tag.
+
+### `color` como enum do banco, não hexadecimal
+
+A cor é guardada pelo **nome** (`yellow`), nunca pelo valor (`#FFF9C4`).
+
+O motivo é o tema da interface: o cliente precisa renderizar um amarelo suave no
+tema claro e um mostarda escuro no tema escuro. Com um hexadecimal fixo no banco,
+a mesma nota ficaria ilegível em um dos dois — ou exigiria que o cliente
+recalculasse luminância a partir do hex, que é adivinhação.
+
+Guardar o nome inverte a responsabilidade corretamente: o servidor registra a
+**intenção** ("esta nota é amarela"), o cliente decide a **aparência**.
+
+Ser um enum do Postgres, e não um `varchar`, dá a validação de graça: um valor
+fora da paleta é rejeitado pelo banco, não só pelo DTO.
+
+Um `none` explícito, em vez de coluna anulável, evita tratamento de nulo em todos
+os clientes — a API sempre devolve um valor.
+
+Acrescentar cores é uma migration aditiva (`ALTER TYPE ... ADD VALUE`) e, pelo
+contrato, não exige nova versão da API: clientes antigos degradam para `none` ao
+receber um valor que não conhecem.
+
+**Remover uma cor é o oposto.** O Postgres não permite tirar valor de um enum: a
+migration recria o tipo inteiro, migra a coluna e descarta o antigo — sete
+comandos numa transação. Com dados em produção, a conversão falha se alguma linha
+usar o valor removido, então seria preciso reatribuir essas notas antes. Estreitar
+a paleta é decisão a tomar cedo, enquanto a tabela está vazia.
+
 ### `content_preview`
 
 Primeiros ~200 caracteres do conteúdo em texto plano, desnormalizados. A listagem
 de notas não carrega o corpo inteiro de cada uma — o que muda o custo de rolar uma
 lista de mil notas de megabytes para kilobytes.
 
-### Hierarquia de cadernos
-
-`parent_id` auto-referente, com profundidade limitada a 3 níveis pela aplicação.
-Além disso a navegação vira confusa e as consultas recursivas ficam caras sem
-ganho real para o usuário.
-
 ## Índices
 
 | Índice                   | Colunas                                               | Serve a                      |
 | ------------------------ | ----------------------------------------------------- | ---------------------------- |
 | `notes_user_updated_idx` | `(user_id, updated_at DESC) WHERE deleted_at IS NULL` | Listagem padrão              |
-| `notes_notebook_idx`     | `(notebook_id) WHERE deleted_at IS NULL`              | Notas de um caderno          |
 | `notes_search_idx`       | GIN `(search_vector)`                                 | Busca full-text              |
 | `notes_sync_idx`         | `(user_id, updated_at)`                               | Delta sync                   |
 | `notes_trash_idx`        | `(deleted_at) WHERE deleted_at IS NOT NULL`           | Job de expurgo               |
@@ -190,8 +216,6 @@ desnecessárias.
 
 - Toda FK de posse tem `ON DELETE CASCADE` a partir de `User`: apagar a conta
   apaga os dados, sem órfãos.
-- `notebook_id` em `notes` é `ON DELETE SET NULL`: apagar um caderno não pode
-  apagar as notas dentro dele — elas voltam para a raiz.
 - `CHECK (char_length(title) <= 255)` e limite de conteúdo aplicados no banco, não
   só no DTO: o banco é a última linha de defesa.
 

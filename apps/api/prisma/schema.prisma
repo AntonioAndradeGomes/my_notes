@@ -39,6 +39,7 @@ model User {
 
   notes    Note[]
   sessions Session[]
+  tags     Tag[]
 
   @@index([deletionScheduledAt])
   @@map("users")
@@ -71,6 +72,25 @@ model Session {
   @@map("sessions")
 }
 
+/// Paleta fechada, compartilhada por notas e tags.
+///
+/// Guardamos o nome, nunca o hexadecimal: e o cliente que decide o tom conforme
+/// o tema. `yellow` e um amarelo claro no tema claro e um mostarda escuro no
+/// tema escuro — com um hex no banco, essa adaptacao seria impossivel.
+enum Color {
+  none
+  red
+  orange
+  yellow
+  green
+  teal
+  blue
+  purple
+  pink
+
+  @@map("palette_color")
+}
+
 model Note {
   id     String @id @default(uuid(7)) @db.Uuid
   userId String @map("user_id") @db.Uuid
@@ -81,6 +101,10 @@ model Note {
 
   isPinned   Boolean @default(false) @map("is_pinned")
   isArchived Boolean @default(false) @map("is_archived")
+
+  /// `none` em vez de nulo: evita tratamento de null em todo cliente e deixa a
+  /// resposta da API sempre com um valor.
+  color Color @default(none)
 
   /// Incrementa a cada escrita. Base do controle de concorrencia otimista
   /// e da deteccao de conflito na sincronizacao.
@@ -94,9 +118,106 @@ model Note {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags        NoteTag[]
+  attachments Attachment[]
+  versions    NoteVersion[]
 
   @@index([userId, updatedAt(sort: Desc)])
   @@index([deletedAt])
   @@map("notes")
+}
+
+/// Marcador livre, criado e mantido por cada usuario.
+///
+/// Tag e por usuario, nao global: `#trabalho` do Fulano nao e a mesma linha que
+/// `#trabalho` da Ciclana. Compartilhar tags entre contas criaria acoplamento
+/// entre usuarios que nada no produto justifica.
+model Tag {
+  id     String @id @default(uuid(7)) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+
+  /// citext: `Trabalho` e `trabalho` sao a mesma tag. Resolver no tipo da coluna
+  /// faz a restricao de unicidade valer de fato.
+  name String @db.Citext
+
+  color Color @default(none)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notes NoteTag[]
+
+  @@unique([userId, name])
+  @@map("tags")
+}
+
+/// Ligacao muitos-para-muitos entre notas e tags.
+model NoteTag {
+  noteId String @map("note_id") @db.Uuid
+  tagId  String @map("tag_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  /// Chave composta: a propria ligacao e a identidade. Uma nota nao pode ter a
+  /// mesma tag duas vezes.
+  @@id([noteId, tagId])
+  /// A PK ja cobre a busca por nota; este indice cobre o caminho inverso
+  /// (todas as notas de uma tag).
+  @@index([tagId])
+  @@map("note_tags")
+}
+
+enum AttachmentStatus {
+  /// URL de upload emitida, arquivo ainda nao confirmado no storage.
+  pending
+  ready
+  failed
+
+  @@map("attachment_status")
+}
+
+/// Metadados de um arquivo anexado. O binario vive no object storage: a API
+/// assina uma URL e o cliente envia direto, sem passar por nos.
+model Attachment {
+  id     String @id @default(uuid(7)) @db.Uuid
+  noteId String @map("note_id") @db.Uuid
+
+  /// Caminho do objeto no bucket.
+  storageKey String @unique @map("storage_key")
+
+  filename  String           @db.VarChar(255)
+  mimeType  String           @map("mime_type") @db.VarChar(255)
+  sizeBytes BigInt           @map("size_bytes")
+  status    AttachmentStatus @default(pending)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@index([noteId])
+  /// Job diario que descarta uploads que ficaram pendentes.
+  @@index([status, createdAt])
+  @@map("attachments")
+}
+
+/// Snapshot do conteudo anterior de uma nota, para restauracao.
+model NoteVersion {
+  id     String @id @default(uuid(7)) @db.Uuid
+  noteId String @map("note_id") @db.Uuid
+
+  title   String @db.VarChar(255)
+  content String
+  version BigInt
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  note Note @relation(fields: [noteId], references: [id], onDelete: Cascade)
+
+  @@unique([noteId, version])
+  @@index([noteId, createdAt(sort: Desc)])
+  @@map("note_versions")
 }
