@@ -39,9 +39,18 @@ reescritos a qualquer momento; `code` é contrato.
 | `UNSUPPORTED_MEDIA_TYPE` | 415  | `Content-Type` não suportado                         |
 | `PAYLOAD_TOO_LARGE`      | 413  | Corpo acima do limite                                |
 
-Códigos usados em `errors[].code`: `required`, `invalid_type`, `invalid_format`,
-`min_length`, `max_length`, `min_value`, `max_value`, `pattern`, `invalid_enum`,
-`not_unique`.
+Códigos usados em `errors[].code` (vêm do Zod): `invalid_type`, `too_small`,
+`too_big`, `invalid_format`, `invalid_value`, `unrecognized_keys`, `custom`.
+
+O `field` usa notação de ponto (`preferences.theme`). Quando o problema é o
+corpo inteiro — um array onde se esperava um objeto, por exemplo — o valor é
+`body`.
+
+**Corpo ausente responde `400 MALFORMED_REQUEST`, não `422`**: sem documento não
+há o que validar, e um `422` sugeriria que o conteúdo enviado violou uma regra.
+
+Toda mensagem sai em português, inclusive as geradas pelo próprio Zod. Ainda
+assim, `message` é texto para humanos — programe contra o `code`.
 
 ## Recursos
 
@@ -57,8 +66,6 @@ Códigos usados em `errors[].code`: `required`, `invalid_type`, `invalid_format`
 
 | `code`                    | HTTP | Significado                               |
 | ------------------------- | ---- | ----------------------------------------- |
-| `NOTEBOOK_CYCLE`          | 422  | O caderno viraria ancestral de si mesmo   |
-| `NOTEBOOK_TOO_DEEP`       | 422  | Ultrapassa os 3 níveis de aninhamento     |
 | `TAG_LIMIT_EXCEEDED`      | 422  | Mais de 50 tags em uma nota               |
 | `NOTE_TOO_LARGE`          | 413  | Conteúdo acima de 1 MiB                   |
 | `ATTACHMENT_TOO_LARGE`    | 413  | Anexo acima de 25 MB                      |

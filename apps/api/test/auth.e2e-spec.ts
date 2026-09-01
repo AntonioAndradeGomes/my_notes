@@ -71,6 +71,37 @@ describe('Auth e Users (e2e)', () => {
       expect(response.body.code).toBe('ALREADY_EXISTS');
     });
 
+    it('rejeita corpo ausente com 400, nao 422', async () => {
+      // Sem corpo nao ha documento para validar: 422 sugeriria que o conteudo
+      // enviado violou uma regra.
+      const response = await api().post('/api/v1/users');
+
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe('MALFORMED_REQUEST');
+    });
+
+    it('responde em portugues tambem nas mensagens padrao do Zod', async () => {
+      const response = await api().post('/api/v1/users').send({});
+
+      expect(response.status).toBe(422);
+      const fields = response.body.errors.map((e: { field: string }) => e.field);
+      expect(fields).toEqual(expect.arrayContaining(['name', 'email', 'password']));
+      for (const error of response.body.errors) {
+        expect(error.message).toBe('Campo obrigatório');
+      }
+    });
+
+    it('nao vaza a mensagem interna do parser em JSON quebrado', async () => {
+      const response = await api()
+        .post('/api/v1/users')
+        .set('Content-Type', 'application/json')
+        .send('{quebrado');
+
+      expect(response.status).toBe(400);
+      expect(response.body.title).toBe('Requisição malformada');
+      expect(response.body.title).not.toMatch(/JSON at position/);
+    });
+
     it('rejeita senha curta com 422 e aponta o campo', async () => {
       const response = await api()
         .post('/api/v1/users')

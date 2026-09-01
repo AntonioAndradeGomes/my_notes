@@ -67,7 +67,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       const code = httpStatusToCode(status);
       return {
         type: problemTypeUri(code),
-        title: exception.message,
+        title: titleFor(exception, code),
         status,
         instance,
         code,
@@ -91,6 +91,31 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       ...(requestId ? { requestId } : {}),
     };
   }
+}
+
+/**
+ * Títulos estáveis por código.
+ *
+ * A mensagem crua da exceção às vezes é detalhe interno em inglês — o parser de
+ * JSON do Express, por exemplo, devolve "Expected property name or '}' in JSON
+ * at position 1". Isso descreve o parser, não o problema do cliente.
+ */
+const TITLES: Record<string, string> = {
+  MALFORMED_REQUEST: 'Requisição malformada',
+  UNAUTHENTICATED: 'Não autenticado',
+  FORBIDDEN: 'Acesso negado',
+  NOT_FOUND: 'Recurso não encontrado',
+  ALREADY_EXISTS: 'Recurso já existe',
+  PAYLOAD_TOO_LARGE: 'Corpo da requisição excede o limite',
+  UNSUPPORTED_MEDIA_TYPE: 'Tipo de conteúdo não suportado',
+  VALIDATION_FAILED: 'Falha de validação',
+  RATE_LIMITED: 'Limite de requisições excedido',
+  SERVICE_UNAVAILABLE: 'Serviço indisponível',
+  TIMEOUT: 'Tempo de resposta excedido',
+};
+
+function titleFor(exception: HttpException, code: string): string {
+  return TITLES[code] ?? exception.message;
 }
 
 function httpStatusToCode(status: number): string {

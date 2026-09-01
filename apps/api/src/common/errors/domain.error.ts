@@ -25,6 +25,12 @@ export class NotFoundError extends DomainError {
   readonly status = 404;
 }
 
+/** Requisição que não chega a ser um documento válido: corpo ausente ou JSON quebrado. */
+export class MalformedRequestError extends DomainError {
+  readonly code = 'MALFORMED_REQUEST';
+  readonly status = 400;
+}
+
 export class AlreadyExistsError extends DomainError {
   readonly code = 'ALREADY_EXISTS';
   readonly status = 409;

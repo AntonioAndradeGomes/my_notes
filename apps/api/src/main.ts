@@ -6,6 +6,10 @@ import helmet from 'helmet';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { type Env } from './config/env.schema.js';
+import { installPortugueseErrorMap } from './common/validation/zod-error-map.js';
+
+// Antes de qualquer schema ser avaliado — inclusive a validação do ambiente.
+installPortugueseErrorMap();
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });

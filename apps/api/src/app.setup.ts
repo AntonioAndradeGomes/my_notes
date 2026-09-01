@@ -1,6 +1,7 @@
 import { type INestApplication, VersioningType } from '@nestjs/common';
 
 import { ProblemDetailsFilter } from './common/filters/problem-details.filter.js';
+import { installPortugueseErrorMap } from './common/validation/zod-error-map.js';
 
 export interface AppSetupOptions {
   globalPrefix: string;
@@ -15,6 +16,9 @@ export interface AppSetupOptions {
  * pela suíte.
  */
 export function configureApp(app: INestApplication, options: AppSetupOptions): void {
+  // Idempotente: o main.ts já instala, mas os testes e2e não passam por ele.
+  installPortugueseErrorMap();
+
   app.setGlobalPrefix(options.globalPrefix);
 
   // Versionamento por caminho de URL: /api/v1/... — ver ADR-0008.
