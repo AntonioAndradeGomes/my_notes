@@ -33,7 +33,7 @@
     "@commitlint/cli": "^21.2.0",
     "@commitlint/config-conventional": "^21.2.0",
     "@mynotes/eslint-config": "workspace:*",
-    "@redocly/cli": "^2.49.0",
+    "@redocly/cli": "^2.51.1",
     "eslint": "catalog:",
     "husky": "^9.1.7",
     "lint-staged": "^17.4.0",
